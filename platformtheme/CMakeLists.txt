@@ -50,15 +50,15 @@ qt5_add_dbus_adaptor(SRCS
     StatusNotifierItem
 )
 
-add_library(cuteplatformtheme MODULE ${SRCS})
+add_library(lingmoplatformtheme MODULE ${SRCS})
 
-target_compile_definitions(cuteplatformtheme
+target_compile_definitions(lingmoplatformtheme
     PRIVATE
         "QT_NO_FOREACH"
         "LIB_FM_QT_SONAME=\"${LIB_FM_QT_SONAME}\""
 )
 
-target_link_libraries(cuteplatformtheme PRIVATE
+target_link_libraries(lingmoplatformtheme PRIVATE
     Qt5::GuiPrivate
     Qt5::X11Extras
     Qt5::Widgets
@@ -90,4 +90,4 @@ else()
     message(FATAL_ERROR "Qt5 plugin directory cannot be detected.")
 endif()
 
-install(TARGETS cuteplatformtheme LIBRARY DESTINATION "${QT_PLUGINS_DIR}/platformthemes")
+install(TARGETS lingmoplatformtheme LIBRARY DESTINATION "${QT_PLUGINS_DIR}/platformthemes")

@@ -1,6 +1,6 @@
 # Qt Plugins
 
-Unify Qt application style of CuteOS.
+Unify Qt application style of LingmoOS.
 
 ## Dependencies
 
@@ -18,4 +18,4 @@ sudo make install
 
 ## License
 
-cute-qt-plugins is licensed under GPLv3.
+lingmo-qt-plugins is licensed under GPLv3.

@@ -50,7 +50,7 @@ void onDarkModeChanged()
         return;
     }
 
-    QStyle *style = QStyleFactory::create("cute");
+    QStyle *style = QStyleFactory::create("lingmo");
     if (style) {
         qApp->setStyle(style);
     }
@@ -212,5 +212,5 @@ void PlatformTheme::setQtQuickControlsTheme()
         return;
     }
 
-    QQuickStyle::setStyle(QLatin1String("fish-style"));
+    QQuickStyle::setStyle(QLatin1String("lingmo-style"));
 }

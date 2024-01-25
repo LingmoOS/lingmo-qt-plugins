@@ -13,7 +13,7 @@ void updateXdgIconSystemTheme()
 class PlatformThemePlugin : public QPlatformThemePlugin
 {
     Q_OBJECT
-    Q_PLUGIN_METADATA(IID QPlatformThemeFactoryInterface_iid FILE "cute-platformtheme.json")
+    Q_PLUGIN_METADATA(IID QPlatformThemeFactoryInterface_iid FILE "lingmo-platformtheme.json")
 
 public:
     PlatformThemePlugin(QObject *parent = nullptr)

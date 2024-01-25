@@ -1,5 +1,5 @@
-cute-qt-plugins (23.02.8) UNRELEASED; urgency=high
+lingmo-qt-plugins (2.0.0) UNRELEASED; urgency=high
 
-  * Initial release (CuteOS)  <support@cuteos.com>
+  * Initial release (LingmoOS)  <support@lingmo.org>
 
- -- Floating dream <2422586862@qq.com>  Tue, 14 Feb 2023 21:06:52 +0800
+ -- LingmoOS Packaging Team <support@lingmo.org> Thur, 25 Jan 2024 10:52:29 +0800
