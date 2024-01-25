@@ -1,3 +1,4 @@
+[![Build](https://github.com/LingmoOS/lingmo-qt-plugins/actions/workflows/build.yml/badge.svg)](https://github.com/LingmoOS/lingmo-qt-plugins/releases/tag/2)
 # Qt Plugins
 
 Unify Qt application style of LingmoOS.
