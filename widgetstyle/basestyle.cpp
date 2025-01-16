@@ -115,6 +115,7 @@ void onAccentColorChanged() {
     if (iface.isValid()) {
         int accentColorID = iface.property("accentColor").toInt();
         setBaseColorFromAccentColor(accentColorID);
+
         // 重新应用样式表
         qApp->setStyleSheet("");
         // 重新设置样式表
