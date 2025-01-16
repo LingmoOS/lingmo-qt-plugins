@@ -24,6 +24,8 @@
 #define BASESTYLE_H
 
 #include <QCommonStyle>
+#include <QColor>
+#include <QDBusInterface>
 
 class BaseStylePrivate;
 class ShadowHelper;

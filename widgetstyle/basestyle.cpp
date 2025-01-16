@@ -25,7 +25,6 @@
 #include "shadowhelper.h"
 #include "blurhelper.h"
 
-#include <QAbstractItemView>
 #include <QApplication>
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -60,9 +59,62 @@
 
 #include <cmath>
 
+#include <QDBusInterface>
+
 QT_BEGIN_NAMESPACE
 Q_GUI_EXPORT int qt_defaultDpiX();
 QT_END_NAMESPACE
+
+// Define colors
+QColor m_blueColor = QColor(34, 119, 255); // #2277FF
+QColor m_redColor = QColor(255, 92, 109); // #FF5C6D
+QColor m_greenColor = QColor(53, 191, 86); // #35BF56
+QColor m_purpleColor = QColor(130, 102, 255); // #8266FF
+QColor m_pinkColor = QColor(202, 100, 172); // #CA64AC
+QColor m_orangeColor = QColor(254, 160, 66); // #FEA042
+QColor m_greyColor = QColor(79, 89, 107); // #4F596B
+
+QColor baseColor;
+
+void setBaseColorFromAccentColor(int accentColorID) {
+    switch (accentColorID) {
+    case 0:
+        baseColor = m_blueColor;
+        break;
+    case 1:
+        baseColor = m_redColor;
+        break;
+    case 2:
+        baseColor = m_greenColor;
+        break;
+    case 3:
+        baseColor = m_purpleColor;
+        break;
+    case 4:
+        baseColor = m_pinkColor;
+        break;
+    case 5:
+        baseColor = m_orangeColor;
+        break;
+    case 6:
+        baseColor = m_greyColor;
+        break;
+    default:
+        baseColor = m_blueColor;
+        break;
+    }
+}
+
+void initializeBaseColor() {
+    QDBusInterface iface("com.lingmo.Settings",
+                         "/Theme",
+                         "com.lingmo.Theme",
+                         QDBusConnection::sessionBus());
+    if (iface.isValid()) {
+        int accentColorID = iface.property("accentColor").toInt();
+        setBaseColorFromAccentColor(accentColorID);
+    }
+}
 
 static QObject *hintsSettings()
 {
@@ -116,16 +168,16 @@ namespace Phantom
         constexpr qint16 TabBar_InctiveVShift = 0;
 
         constexpr qreal DefaultFrame_Radius = 11.0;
-        constexpr qreal TabBarTab_Rounding = 1.0;
-        constexpr qreal SpinBox_Rounding = 5.0;
-        constexpr qreal LineEdit_Rounding = 5.0;
+        constexpr qreal TabBarTab_Rounding = 12.0;
+        constexpr qreal SpinBox_Rounding = 12.0;
+        constexpr qreal LineEdit_Rounding = 12.0;
         constexpr qreal FrameFocusRect_Rounding = 5.0;
-        constexpr qreal PushButton_Rounding = 5.0;
-        constexpr qreal ToolButton_Rounding = 5.0;
-        constexpr qreal ProgressBar_Rounding = 5.0;
-        constexpr qreal GroupBox_Rounding = 5.0;
-        constexpr qreal SliderGroove_Rounding = 5.0;
-        constexpr qreal SliderHandle_Rounding = 5.0;
+        constexpr qreal PushButton_Rounding = 12.0;
+        constexpr qreal ToolButton_Rounding = 12.0;
+        constexpr qreal ProgressBar_Rounding = 12.0;
+        constexpr qreal GroupBox_Rounding = 12.0;
+        constexpr qreal SliderGroove_Rounding = 12.0;
+        constexpr qreal SliderHandle_Rounding = 12.0;
 
         constexpr qreal CheckMark_WidthOfHeightScale = 0.8;
         constexpr qreal PushButton_HorizontalPaddingFontHeightRatio = 1.0;
@@ -1412,6 +1464,8 @@ BaseStyle::BaseStyle()
     setObjectName(QLatin1String("Phantom"));
 
     m_shadowHelper->setFrameRadius(Phantom::DefaultFrame_Radius);
+    // Call initializeBaseColor() during initialization
+    initializeBaseColor();
 }
 
 BaseStyle::~BaseStyle()
@@ -2727,16 +2781,21 @@ void BaseStyle::drawControl(ControlElement element,
         bool isSunken = menuItem->state & State_Sunken;
         bool isEnabled = menuItem->state & State_Enabled;
         bool hasSubMenu = menuItem->menuItemType == QStyleOptionMenuItem::SubMenu;
+
         if (isSelected) {
-            // Swatchy fillColor = isSunken ? S_highlight_outline : S_highlight;
-            // painter->fillRect(option->rect, swatch.color(fillColor));
-            // rekols: Add rounded rectangle.
+            QColor fillColor = baseColor;
+            if (isSunken) {
+                fillColor = baseColor.lighter(120); // Increase brightness by 20% when pressed
+            }
             qreal item_radius = Phantom::DefaultFrame_Radius / 2;
             painter->save();
             painter->setPen(Qt::NoPen);
-            // painter->setBrush(swatch.color(fillColor));
-            painter->setBrush(swatch.color(S_button_on));
-            painter->setOpacity(0.4);
+            painter->setBrush(fillColor);
+            if (!isSunken) {
+                painter->setOpacity(1.0); // No transparency when hovered
+            } else {
+                painter->setOpacity(0.4); // Transparency when pressed
+            }
             painter->setRenderHint(QPainter::Antialiasing);
             painter->drawRoundedRect(option->rect, item_radius, item_radius);
             painter->restore();
@@ -2814,7 +2873,7 @@ void BaseStyle::drawControl(ControlElement element,
 #if 0
                 painter->save();
 #endif
-            painter->setPen(swatch.pen(isSelected ? S_text /*S_highlightedText*/ : S_text));
+            painter->setPen(isSelected ? QColor(Qt::white) : swatch.pen(S_text /*S_highlightedText*/));
 
             // My comment:
             //
@@ -2893,7 +2952,7 @@ void BaseStyle::drawControl(ControlElement element,
         auto btn = qstyleoption_cast<const QStyleOptionButton*>(option);
         if (!btn)
             break;
-        proxy()->drawControl(CE_PushButtonBevel, btn, painter, widget);
+        // proxy()->drawControl(CE_PushButtonBevel, btn, painter, widget);
         QStyleOptionButton subopt = *btn;
         subopt.rect = subElementRect(SE_PushButtonContents, btn, widget);
         proxy()->drawControl(CE_PushButtonLabel, &subopt, painter, widget);
@@ -2903,8 +2962,48 @@ void BaseStyle::drawControl(ControlElement element,
         auto button = qstyleoption_cast<const QStyleOptionButton*>(option);
         if (!button)
             break;
-        // This code is very similar to QCommonStyle's implementation, but doesn't
-        // set the icon mode to active when focused.
+        // Apply stylesheet to set default background color and hover effect
+        if (widget) {
+            auto nonConstWidget = const_cast<QWidget*>(widget);
+            QString baseColorString;
+            QString hoverColorString;
+            QString pressedColorString;
+
+            if (button->features & QStyleOptionButton::DefaultButton) {
+                // Use grey color for Cancel button
+                baseColorString = baseColor.name(); // Convert QColor to string
+                hoverColorString = baseColor.lighter(120).name(); // Increase brightness by 20%
+                pressedColorString = baseColor.darker(120).name(); // Decrease brightness by 20%
+            } else {
+                // Use baseColor for other buttons
+                if (isDarkMode()) {
+                    baseColorString = QColor("#3C3C3D").name(); // Dark mode color
+                } else {
+                    baseColorString = QColor("#FFFFFF").name(); // Light mode color
+                }
+                hoverColorString = QColor(baseColorString).lighter(120).name(); // Increase brightness by 20%
+                pressedColorString = QColor(baseColorString).darker(120).name(); // Decrease brightness by 20%
+            }
+
+            nonConstWidget->setStyleSheet(
+                QString(
+                    "QPushButton {"
+                    "    background-color: %1;" // Use baseColor for default background color
+                    "    border-radius: 10px;" // Rounded corners
+                    "    height: 40px;" // Set height
+                    "    width: 100px;" // Set width
+                    "    border: none;"
+                    "    color: white;"
+                    "}"
+                    "QPushButton:hover {"
+                    "    background-color: %2;" // Background color on hover
+                    "}"
+                    "QPushButton:pressed {"
+                    "    background-color: %3;" // Background color when pressed
+                    "}"
+                ).arg(baseColorString, hoverColorString, pressedColorString)
+            );
+        }
         QRect textRect = button->rect;
         int tf = Qt::AlignVCenter | Qt::TextShowMnemonic;
         if (!proxy()->styleHint(SH_UnderlineShortcut, button, widget))
