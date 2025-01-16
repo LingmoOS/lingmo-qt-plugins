@@ -2968,32 +2968,43 @@ void BaseStyle::drawControl(ControlElement element,
             QString baseColorString;
             QString hoverColorString;
             QString pressedColorString;
+            QString textColorString;
+            QString disabledTextColorString = QColor("#A0A0A0").name(); // Light gray color for disabled text
 
             if (button->features & QStyleOptionButton::DefaultButton) {
                 // Use grey color for Cancel button
                 baseColorString = baseColor.name(); // Convert QColor to string
-                hoverColorString = baseColor.lighter(120).name(); // Increase brightness by 20%
+                hoverColorString = baseColor.lighter(110).name(); // Increase brightness by 20%
                 pressedColorString = baseColor.darker(120).name(); // Decrease brightness by 20%
+                textColorString = "white";
             } else {
                 // Use baseColor for other buttons
                 if (isDarkMode()) {
                     baseColorString = QColor("#3C3C3D").name(); // Dark mode color
+                    textColorString = "white";
                 } else {
-                    baseColorString = QColor("#FFFFFF").name(); // Light mode color
+                    baseColorString = QColor("#DEDEDE").name(); // Light mode color
+                    textColorString = "black";
                 }
                 hoverColorString = QColor(baseColorString).lighter(120).name(); // Increase brightness by 20%
                 pressedColorString = QColor(baseColorString).darker(120).name(); // Decrease brightness by 20%
             }
+
+            // 根据文本内容计算按钮宽度
+            QFontMetrics fm(widget->font());
+            int textWidth = fm.horizontalAdvance(button->text);
+            int buttonWidth = textWidth + 12; // 每边添加 3 个像素内边距
 
             nonConstWidget->setStyleSheet(
                 QString(
                     "QPushButton {"
                     "    background-color: %1;" // Use baseColor for default background color
                     "    border-radius: 10px;" // Rounded corners
-                    "    height: 40px;" // Set height
-                    "    width: 100px;" // Set width
+                    "    height: 30px;" // Set height
+                    // "    width: 80px;" // Set width
+                    "    width: %6px;" // Set width
                     "    border: none;"
-                    "    color: white;"
+                    "    color: %4;"
                     "}"
                     "QPushButton:hover {"
                     "    background-color: %2;" // Background color on hover
@@ -3001,7 +3012,12 @@ void BaseStyle::drawControl(ControlElement element,
                     "QPushButton:pressed {"
                     "    background-color: %3;" // Background color when pressed
                     "}"
-                ).arg(baseColorString, hoverColorString, pressedColorString)
+                    "QPushButton:disabled {"
+                    "    background-color: %1;" // Use baseColor for disabled background color
+                    "    color: %5;" // Set text color for disabled state
+                    "    opacity: 0.5;" // Add transparency to indicate disabled state
+                    "}"
+                ).arg(baseColorString, hoverColorString, pressedColorString, textColorString, disabledTextColorString, QString::number(buttonWidth))
             );
         }
         QRect textRect = button->rect;
