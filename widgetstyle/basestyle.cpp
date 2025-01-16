@@ -2,6 +2,7 @@
  * Copyright (C) 2020 Reven Martin
  * Copyright (C) 2020 KeePassXC Team <team@keepassxc.org>
  * Copyright (C) 2019 Andrew Richards
+ * Copyright (C) 2025 Lingmo OS Team.
  *
  * Derived from Phantomstyle and relicensed under the GPLv2 or v3.
  * https://github.com/randrew/phantomstyle
@@ -105,7 +106,8 @@ void setBaseColorFromAccentColor(int accentColorID) {
     }
 }
 
-void initializeBaseColor() {
+// 处理 accentColor 变化的槽函数
+void onAccentColorChanged() {
     QDBusInterface iface("com.lingmo.Settings",
                          "/Theme",
                          "com.lingmo.Theme",
@@ -113,6 +115,32 @@ void initializeBaseColor() {
     if (iface.isValid()) {
         int accentColorID = iface.property("accentColor").toInt();
         setBaseColorFromAccentColor(accentColorID);
+        // 重新应用样式表
+        qApp->setStyleSheet("");
+        // 重新设置样式表
+        // 这里可以调用 applyStylesheet() 或者直接在 case CE_PushButtonLabel 中处理
+        for (QWidget *widget : qApp->allWidgets()) {
+            widget->update();
+        }
+    }
+}
+
+void initializeBaseColor(QObject *context) {
+    QDBusInterface iface("com.lingmo.Settings",
+                         "/Theme",
+                         "com.lingmo.Theme",
+                         QDBusConnection::sessionBus());
+    if (iface.isValid()) {
+        int accentColorID = iface.property("accentColor").toInt();
+        setBaseColorFromAccentColor(accentColorID);
+
+        // 连接 accentColorChanged 信号到槽函数
+        QDBusConnection::sessionBus().connect("com.lingmo.Settings",
+                                              "/Theme",
+                                              "com.lingmo.Theme",
+                                              "accentColorChanged",
+                                              context,
+                                              SLOT(onAccentColorChanged()));
     }
 }
 
@@ -1465,7 +1493,7 @@ BaseStyle::BaseStyle()
 
     m_shadowHelper->setFrameRadius(Phantom::DefaultFrame_Radius);
     // Call initializeBaseColor() during initialization
-    initializeBaseColor();
+    initializeBaseColor(this);
 }
 
 BaseStyle::~BaseStyle()
@@ -2993,7 +3021,7 @@ void BaseStyle::drawControl(ControlElement element,
             // 根据文本内容计算按钮宽度
             QFontMetrics fm(widget->font());
             int textWidth = fm.horizontalAdvance(button->text);
-            int buttonWidth = textWidth + 12; // 每边添加 3 个像素内边距
+            int buttonWidth = textWidth + 12; // 每边添加 6 个像素内边距
 
             nonConstWidget->setStyleSheet(
                 QString(
