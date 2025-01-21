@@ -60,7 +60,7 @@ public:
     void drawComplexControl(ComplexControl control,
                             const QStyleOptionComplex* option,
                             QPainter* painter,
-                            const QWidget* widget) const override;
+                            const QWidget* widget = nullptr) const override;
     QRect subElementRect(SubElement r, const QStyleOption* opt, const QWidget* widget = nullptr) const override;
     QSize sizeFromContents(ContentsType type,
                            const QStyleOption* option,

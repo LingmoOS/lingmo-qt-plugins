@@ -116,11 +116,11 @@ void onAccentColorChanged() {
         int accentColorID = iface.property("accentColor").toInt();
         setBaseColorFromAccentColor(accentColorID);
 
-        // 重新应用样式表
-        qApp->setStyleSheet("");
-        // 重新设置样式表
-        // 这里可以调用 applyStylesheet() 或者直接在 case CE_PushButtonLabel 中处理
+        // 更新所有窗口部件
         for (QWidget *widget : qApp->allWidgets()) {
+            // 重新应用样式
+            widget->style()->unpolish(widget);
+            widget->style()->polish(widget);
             widget->update();
         }
     }
@@ -202,7 +202,7 @@ namespace Phantom
         constexpr qreal LineEdit_Rounding = 12.0;
         constexpr qreal FrameFocusRect_Rounding = 5.0;
         constexpr qreal PushButton_Rounding = 12.0;
-        constexpr qreal ToolButton_Rounding = 12.0;
+        constexpr qreal ToolButton_Rounding = 11.0;
         constexpr qreal ProgressBar_Rounding = 12.0;
         constexpr qreal GroupBox_Rounding = 12.0;
         constexpr qreal SliderGroove_Rounding = 12.0;
@@ -1910,26 +1910,50 @@ void BaseStyle::drawPrimitive(PrimitiveElement elem,
         break;
     }
     case PE_PanelLineEdit: {
-        auto panel = qstyleoption_cast<const QStyleOptionFrame*>(option);
-        if (!panel)
+        auto lineEdit = qstyleoption_cast<const QStyleOptionFrame*>(option);
+        if (!lineEdit)
             break;
-        Ph::PSave save(painter);
-        // We intentionally don't inset the fill rect, even if the frame will paint
-        // over the perimeter, because an inset with rounding enabled may cause
-        // some miscolored separated pixels between the fill and the border, since
-        // we're forced to paint them in two separate draw calls.
 
+        painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
-        painter->setPen(swatch.pen(Ph::SwatchColors::S_none));
-        QColor bgColor = swatch.color(S_base);
-        bgColor.setAlpha(100);
-        painter->setBrush(bgColor);
-        painter->drawRoundedRect(option->rect, Ph::LineEdit_Rounding, Ph::LineEdit_Rounding);
 
-        // Ph::paintSolidRoundRect(painter, option->rect, Ph::LineEdit_Rounding, swatch, S_base);
-        save.restore();
-        if (panel->lineWidth > 0)
-            proxy()->drawPrimitive(PE_FrameLineEdit, option, painter, widget);
+        QRect rect = lineEdit->rect;
+        bool enabled = lineEdit->state & State_Enabled;
+        bool hasFocus = lineEdit->state & State_HasFocus;
+        bool mouseOver = lineEdit->state & State_MouseOver;
+        bool isReadOnly = lineEdit->state & State_ReadOnly;
+
+        // 获取基础颜色
+        QColor baseColor = isDarkMode() ? QColor("#1E1E1E") : QColor("#FFFFFF");
+        QColor borderColor = isDarkMode() ? QColor("#3C3C3C") : QColor("#CCCCCC");
+
+        // 背景颜色
+        QColor bgColor = baseColor;
+        if (!enabled || isReadOnly) {
+            bgColor = isDarkMode() ? QColor("#2A2A2A") : QColor("#F5F5F5");
+            borderColor.setAlpha(180);
+        } else if (hasFocus) {
+            borderColor = ::baseColor;  // 使用全局变量 baseColor
+        } else if (mouseOver) {
+            borderColor = borderColor.darker(110);
+        }
+
+        // 绘制背景
+        painter->setPen(QPen(borderColor, 1));
+        painter->setBrush(bgColor);
+        painter->drawRoundedRect(rect.adjusted(0, 0, -1, -1), 11, 11);
+
+        // 如果有焦点，绘制发光效果
+        if (hasFocus && enabled && !isReadOnly) {
+            QColor glowColor = ::baseColor;  // 使用全局变量 baseColor
+            glowColor.setAlpha(50);
+            
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(glowColor);
+            painter->drawRoundedRect(rect.adjusted(-2, -2, 1, 1), 11, 11);
+        }
+
+        painter->restore();
         break;
     }
     case PE_IndicatorCheckBox: {
@@ -1984,39 +2008,64 @@ void BaseStyle::drawPrimitive(PrimitiveElement elem,
         break;
     }
     case PE_IndicatorRadioButton: {
-        qreal rx, ry, rw, rh;
-        QRectF(option->rect).getRect(&rx, &ry, &rw, &rh);
-        bool isHighlighted = option->state & State_HasFocus && option->state & State_KeyboardFocusChange;
-        bool isSunken = state & State_Sunken;
-        bool isEnabled = state & State_Enabled;
-        Swatchy outlineColor = isHighlighted ? S_highlight_outline : S_window_outline;
-        Swatchy bgFillColor = isSunken ? S_highlight : S_base;
-        QPointF circleCenter(rx + rw / 2.0, ry + rh / 2.0);
-        const qreal lineThickness = 1.0;
-        qreal outlineRadius = (qMin(rw, rh) - lineThickness) / 2.0;
-        qreal fillRadius = outlineRadius - lineThickness / 2.0;
-        Ph::PSave save(painter);
+        auto radioButton = qstyleoption_cast<const QStyleOptionButton*>(option);
+        if (!radioButton)
+            break;
+
+        QRect rect = radioButton->rect;
+        bool enabled = radioButton->state & State_Enabled;
+        bool mouseOver = radioButton->state & State_MouseOver;
+        bool sunken = radioButton->state & State_Sunken;
+        bool checked = radioButton->state & State_On;
+
+        // 获取指示器矩形 - 使用 subElementRect 而不是 subControlRect
+        QRect indicatorRect = proxy()->subElementRect(SE_RadioButtonIndicator, option, widget);
+        
+        painter->save();
         painter->setRenderHint(QPainter::Antialiasing);
-        painter->setBrush(swatch.brush(bgFillColor));
-        painter->setPen(swatch.pen(outlineColor));
-        painter->drawEllipse(circleCenter, outlineRadius, outlineRadius);
-        if (Ph::IndicatorShadows && !isSunken && isEnabled) {
-            // Really slow, just a temp demo test
-            painter->setPen(Qt::NoPen);
-            painter->setBrush(swatch.brush(S_base_shadow));
-            QPainterPath path0, path1;
-            path0.addEllipse(circleCenter, fillRadius, fillRadius);
-            path1.addEllipse(circleCenter + QPointF(0, 1.25), fillRadius, fillRadius);
-            QPainterPath path2 = path0 - path1;
-            painter->drawPath(path2);
+
+        // 绘制外圈
+        int diameter = qMin(indicatorRect.width(), indicatorRect.height());
+        QRectF circleRect = QRectF(
+            indicatorRect.x() + (indicatorRect.width() - diameter) / 2.0,
+            indicatorRect.y() + (indicatorRect.height() - diameter) / 2.0,
+            diameter,
+            diameter
+        );
+
+        QColor circleColor = isDarkMode() ? QColor("#404040") : QColor("#FFFFFF");
+        QColor borderColor = isDarkMode() ? QColor("#606060") : QColor("#999999");
+
+        if (!enabled) {
+            circleColor.setAlpha(180);
+            borderColor.setAlpha(180);
+        } else if (checked) {
+            borderColor = baseColor;
+        } else if (mouseOver) {
+            borderColor = borderColor.lighter(120);
         }
-        if (state & State_On) {
-            Swatchy fgColor = isSunken ? S_highlightedText : S_windowText;
-            qreal checkmarkRadius = outlineRadius / 2.32;
+
+        painter->setPen(QPen(borderColor, 1));
+        painter->setBrush(circleColor);
+        painter->drawEllipse(circleRect);
+
+        // 绘制内部选中点
+        if (checked) {
+            QColor dotColor = baseColor;
+            if (!enabled) {
+                dotColor.setAlpha(180);
+            }
+
             painter->setPen(Qt::NoPen);
-            painter->setBrush(swatch.brush(fgColor));
-            painter->drawEllipse(circleCenter, checkmarkRadius, checkmarkRadius);
+            painter->setBrush(dotColor);
+            
+            // 调整内部点的大小和位置以确保居中
+            qreal margin = diameter * 0.35;  // 调整点的大小比例
+            QRectF innerRect = circleRect.adjusted(margin, margin, -margin, -margin);
+            painter->drawEllipse(innerRect);
         }
+
+        painter->restore();
         break;
     }
     case PE_IndicatorToolBarHandle: {
@@ -2295,6 +2344,53 @@ void BaseStyle::drawPrimitive(PrimitiveElement elem,
         painter->fillRect(option->rect, swatch.color(S_window_outline));
         break;
     }
+    // case CE_LineEdit: {
+    //     auto lineEdit = qstyleoption_cast<const QStyleOptionFrame*>(option);
+    //     if (!lineEdit)
+    //         break;
+
+    //     painter->save();
+    //     painter->setRenderHint(QPainter::Antialiasing);
+
+    //     QRect rect = lineEdit->rect;
+    //     bool enabled = lineEdit->state & State_Enabled;
+    //     bool hasFocus = lineEdit->state & State_HasFocus;
+    //     bool mouseOver = lineEdit->state & State_MouseOver;
+    //     bool isReadOnly = lineEdit->state & State_ReadOnly;
+
+    //     // 获取基础颜色
+    //     QColor baseColor = isDarkMode() ? QColor("#1E1E1E") : QColor("#FFFFFF");
+    //     QColor borderColor = isDarkMode() ? QColor("#3C3C3C") : QColor("#CCCCCC");
+
+    //     // 背景颜色
+    //     QColor bgColor = baseColor;
+    //     if (!enabled || isReadOnly) {
+    //         bgColor = isDarkMode() ? QColor("#2A2A2A") : QColor("#F5F5F5");
+    //         borderColor.setAlpha(180);
+    //     } else if (hasFocus) {
+    //         borderColor = this->baseColor;
+    //     } else if (mouseOver) {
+    //         borderColor = borderColor.darker(110);
+    //     }
+
+    //     // 绘制背景
+    //     painter->setPen(QPen(borderColor, 1));
+    //     painter->setBrush(bgColor);
+    //     painter->drawRoundedRect(rect.adjusted(0, 0, -1, -1), 11, 11);
+
+    //     // 如果有焦点，绘制发光效果
+    //     if (hasFocus && enabled && !isReadOnly) {
+    //         QColor glowColor = this->baseColor;
+    //         glowColor.setAlpha(50);
+            
+    //         painter->setPen(Qt::NoPen);
+    //         painter->setBrush(glowColor);
+    //         painter->drawRoundedRect(rect.adjusted(-2, -2, 1, 1), 11, 11);
+    //     }
+
+    //     painter->restore();
+    //     break;
+    // }
     default:
         QCommonStyle::drawPrimitive(elem, option, painter, widget);
         break;
@@ -2318,9 +2414,134 @@ void BaseStyle::drawControl(ControlElement element,
     const Ph::PhSwatch& swatch = *ph_swatchPtr.data();
 
     switch (element) {
-    case CE_CheckBox: {
-        QCommonStyle::drawControl(element, option, painter, widget);
-        // painter->fillRect(option->rect, QColor(255, 0, 0, 90));
+    case CE_CheckBox:
+    case CE_RadioButton: {
+        auto button = qstyleoption_cast<const QStyleOptionButton*>(option);
+        if (!button)
+            break;
+
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+
+        // 获取复选框的矩形区域
+        QRect checkRect = proxy()->subElementRect(element == CE_RadioButton ? SE_RadioButtonIndicator 
+                                                                           : SE_CheckBoxIndicator, 
+                                                button, widget);
+        
+        // 确保矩形是正方形，并且边缘宽度一致
+        int size = qMin(checkRect.width(), checkRect.height());
+        checkRect = QRect(checkRect.x(), checkRect.y() + (checkRect.height() - size) / 2, size, size);
+        
+        // 计算内部矩形（所有边缘保持相同的边框宽度）
+        QRect innerRect = checkRect.adjusted(2, 2, -2, -2);
+        
+        bool isRadio = (element == CE_RadioButton);
+        bool isChecked = button->state & State_On;
+        bool isEnabled = button->state & State_Enabled;
+        bool isHovered = button->state & State_MouseOver;
+
+        painter->setPen(Qt::NoPen);
+        
+        // 背景颜色
+        QColor bgColor;
+        if (!isEnabled) {
+            bgColor = swatch.color(S_window);
+        } else if (isChecked) {
+            bgColor = baseColor;
+            if (isHovered) {
+                bgColor = bgColor.lighter(110);
+            }
+        } else if (isHovered) {
+            bgColor = swatch.color(S_window);
+        } else {
+            bgColor = swatch.color(S_window);
+        }
+
+        // 边框颜色
+        QColor borderColor;
+        if (!isEnabled) {
+            borderColor = swatch.color(S_window_outline);
+        } else if (isChecked) {
+            borderColor = baseColor;
+            if (isHovered) {
+                borderColor = borderColor.lighter(110);
+            }
+        } else if (isHovered) {
+            borderColor = baseColor.lighter(110);
+        } else {
+            borderColor = swatch.color(S_window_outline);
+        }
+
+        if (isRadio) {
+            // 单选框
+            painter->setPen(QPen(borderColor, 1));
+            painter->setBrush(bgColor);
+            QRect smallerCheckRect = checkRect.adjusted(
+                checkRect.width() * 0.05,   // 左边界向右调整5%
+                checkRect.height() * 0.05, // 上边界向下调整5%
+                -checkRect.width() * 0.05, // 右边界向左调整5%
+                -checkRect.height() * 0.05 // 下边界向上调整5%
+            );
+
+            painter->drawEllipse(smallerCheckRect);
+
+            if (isChecked && isEnabled) {
+                // 内部圆点大小为外圈的50%
+                int dotSize = qRound(smallerCheckRect.width() * 0.5);  // 内圆大小为缩小后外圆宽度的50%
+
+                // 使用内圆的中心点来绘制
+                QPointF dotCenter = smallerCheckRect.center();  // 获取外圆的中心点
+                QRectF dotRect(
+                    dotCenter.x() - dotSize / 2.5,  // 左上角x坐标
+                    dotCenter.y() - dotSize / 2.5,  // 左上角y坐标
+                    dotSize, dotSize               // 宽度和高度
+                );
+
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(Qt::white);
+                painter->drawEllipse(dotRect);
+            }
+        } else {
+            // 复选框
+            if (isChecked) {
+                // 选中状态下不显示边框，只有背景色
+                painter->setBrush(bgColor);
+                painter->drawRoundedRect(checkRect, 3, 3);
+
+                // 绘制对勾
+                QPen checkPen(Qt::white, 2);
+                checkPen.setCapStyle(Qt::RoundCap);
+                checkPen.setJoinStyle(Qt::RoundJoin);
+                painter->setPen(checkPen);
+
+                // macOS 风格的对勾
+                QPainterPath path;
+                qreal x = checkRect.x() + checkRect.width() * 0.15;
+                qreal y = checkRect.y() + checkRect.height() * 0.5;
+                
+                path.moveTo(x, y);
+                path.lineTo(x + checkRect.width() * 0.3, y + checkRect.height() * 0.3);
+                path.lineTo(x + checkRect.width() * 0.7, y - checkRect.height() * 0.3);
+                
+                painter->drawPath(path);
+            } else {
+                painter->setPen(QPen(borderColor, 1)); // 减小边框宽度
+                painter->setBrush(bgColor);
+                painter->drawRoundedRect(checkRect, 2.5, 2.5);
+            }
+        }
+
+        // 绘制文本标签
+        QRect textRect = proxy()->subElementRect(element == CE_RadioButton ? SE_RadioButtonContents 
+                                                                          : SE_CheckBoxContents, 
+                                               button, widget);
+        if (!button->text.isEmpty()) {
+            painter->setPen(button->palette.color(isEnabled ? QPalette::Active : QPalette::Disabled, 
+                                                QPalette::WindowText));
+            painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, button->text);
+        }
+
+        painter->restore();
         break;
     }
     case CE_ComboBoxLabel: {
@@ -3028,11 +3249,9 @@ void BaseStyle::drawControl(ControlElement element,
                 QString(
                     "QPushButton {"
                     "    background-color: %1;" // Use baseColor for default background color
-                    "    border-radius: 10px;" // Rounded corners
-                    "    height: 30px;" // Set height
-                    // "    width: 80px;" // Set width
-                    "    width: %6px;" // Set width
-                    "    border: none;"
+                    "    border-radius: 11px;" // 调整圆角大小
+                    "    padding: 4px 12px;" // 减小上下padding
+                    "    min-height: 26px;" // 减小最小高度
                     "    color: %4;"
                     "}"
                     "QPushButton:hover {"
@@ -3044,9 +3263,12 @@ void BaseStyle::drawControl(ControlElement element,
                     "QPushButton:disabled {"
                     "    background-color: %1;" // Use baseColor for disabled background color
                     "    color: %5;" // Set text color for disabled state
-                    "    opacity: 0.5;" // Add transparency to indicate disabled state
-                    "}"
-                ).arg(baseColorString, hoverColorString, pressedColorString, textColorString, disabledTextColorString, QString::number(buttonWidth))
+                    "}")
+                    .arg(baseColorString)
+                    .arg(hoverColorString)
+                    .arg(pressedColorString)
+                    .arg(textColorString)
+                    .arg(disabledTextColorString)
             );
         }
         QRect textRect = button->rect;
@@ -3254,6 +3476,168 @@ void BaseStyle::drawControl(ControlElement element,
         QCommonStyle::drawControl(element, option, painter, widget);
         break;
     }
+    case CE_ProgressBar: {
+        auto progressBar = qstyleoption_cast<const QStyleOptionProgressBar*>(option);
+        if (!progressBar)
+            break;
+
+        QRect rect = progressBar->rect;
+        QRect filled;
+        QRect nonFilled;
+        bool isIndeterminate;
+        Ph::progressBarFillRects(progressBar, filled, nonFilled, isIndeterminate);
+
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+
+        // 绘制背景
+        painter->setPen(Qt::NoPen);
+        QColor bgColor = isDarkMode() ? QColor(60, 60, 60) : QColor(230, 230, 230);
+        painter->setBrush(bgColor);
+        painter->drawRoundedRect(rect, Ph::ProgressBar_Rounding, Ph::ProgressBar_Rounding);
+
+        // 绘制进度条
+        if (!isIndeterminate && !filled.isEmpty()) {
+            // 创建渐变 - 从左到右
+            QLinearGradient gradient;
+            if (progressBar->orientation == Qt::Horizontal) {
+                gradient = QLinearGradient(filled.topLeft(), filled.topRight());
+            } else {
+                gradient = QLinearGradient(filled.bottomLeft(), filled.topLeft());
+            }
+            
+            // 设置渐变颜色 - 从基础颜色逐渐变亮
+            gradient.setColorAt(0, baseColor);
+            gradient.setColorAt(1, baseColor.lighter(115)); // 结束点变亮15%
+
+            // 使用渐变填充整个进度条
+            painter->setBrush(gradient);
+            painter->drawRoundedRect(filled, Ph::ProgressBar_Rounding, Ph::ProgressBar_Rounding);
+        }
+
+        // 如果有文本，绘制文本
+        if (progressBar->textVisible) {
+            QString text = progressBar->text;
+            if (text.isEmpty() && !isIndeterminate) {
+                text = QString::number(progressBar->progress) + QStringLiteral("%");
+            }
+            
+            // 根据进度条的选中状态设置文字颜色
+            QColor textColor;
+            if (progressBar->state & State_Selected) {
+                textColor = swatch.color(S_highlightedText);
+            } else {
+                if (filled.contains(rect.center())) {
+                    textColor = Qt::white;  // 在填充区域内使用白色
+                } else {
+                    textColor = isDarkMode() ? Qt::white : Qt::black;  // 在未填充区域根据主题使用对应颜色
+                }
+            }
+            
+            painter->setPen(textColor);
+            painter->drawText(rect, Qt::AlignCenter, text);
+        }
+
+        painter->restore();
+        break;
+    }
+    case CE_TabBarTab: {
+        auto tab = qstyleoption_cast<const QStyleOptionTab*>(option);
+        if (!tab)
+            break;
+
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+
+        bool selected = tab->state & State_Selected;
+        bool hovered = tab->state & State_MouseOver;
+        bool enabled = tab->state & State_Enabled;
+        bool pressed = tab->state & State_Sunken;
+        
+        // 获取标签区域
+        QRect rect = tab->rect;
+        
+        // macOS 风格尺寸和间距调整
+        const int tabHeight = 32;
+        const int verticalPadding = 6;
+        rect.setHeight(tabHeight);
+
+        // 获取基础背景色（与按钮相同）
+        QColor baseTabColor = isDarkMode() ? QColor("#3C3C3D") : QColor("#DEDEDE");
+        
+        // 背景颜色处理
+        QColor bgColor;
+        if (!enabled) {
+            bgColor = baseTabColor;
+        } else if (selected) {
+            bgColor = baseColor;
+            if (pressed) {
+                bgColor = baseColor.darker(110);  // 选中状态下按压变暗10%
+            } else if (hovered) {
+                bgColor = baseColor.lighter(110);  // 选中状态下悬停变亮10%
+            }
+        } else {
+            if (pressed) {
+                bgColor = baseTabColor.darker(110);  // 未选中状态下按压变暗10%
+            } else if (hovered) {
+                bgColor = baseTabColor.lighter(110);  // 未选中状态下悬停变亮10%
+            } else {
+                bgColor = baseTabColor;
+            }
+        }
+
+        // 绘制标签背景
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(bgColor);
+        
+        // 绘制圆角矩形
+        const int radius = 11;
+        
+        // 按压时的位移效果
+        if (pressed && !selected) {
+            rect.translate(0, 1);
+        }
+        
+        painter->drawRoundedRect(rect, radius, radius);
+        
+        // 绘制分隔线（仅在未选中且未悬停且未按压时）
+        if (!selected && !hovered && !pressed) {
+            painter->setPen(QPen(swatch.color(S_window_outline).lighter(120), 1));
+            painter->drawLine(rect.right(), rect.top() + 8, rect.right(), rect.bottom() - 8);
+        }
+
+        // 绘制文本
+        if (!tab->text.isEmpty()) {
+            QRect textRect = rect.adjusted(12, verticalPadding, -12, -verticalPadding);
+            
+            // 文本颜色
+            QColor textColor;
+            if (!enabled) {
+                textColor = swatch.color(S_windowText).lighter(150);
+            } else if (selected) {
+                textColor = Qt::white;
+            } else {
+                textColor = swatch.color(S_windowText);
+                if (pressed) {
+                    textColor.setAlpha(180);  // 按压时文本更透明
+                } else if (hovered) {
+                    textColor = textColor.lighter(110);  // 悬停时文本变亮
+                }
+            }
+            
+            // 文本跟随按压位移
+            if (pressed && !selected) {
+                textRect.translate(0, 1);
+            }
+            
+            painter->setPen(textColor);
+            painter->drawText(textRect, Qt::AlignCenter, tab->text);
+        }
+
+        painter->restore();
+        break;
+    }
+    
     default:
         QCommonStyle::drawControl(element, option, painter, widget);
         break;
@@ -3514,84 +3898,82 @@ void BaseStyle::drawComplexControl(ComplexControl control,
         auto spinBox = qstyleoption_cast<const QStyleOptionSpinBox*>(option);
         if (!spinBox)
             break;
-        const qreal rounding = Ph::SpinBox_Rounding;
-        bool isLeftToRight = option->direction != Qt::RightToLeft;
-        const QRect rect = spinBox->rect;
-        bool sunken = spinBox->state & State_Sunken;
-        bool upIsActive = spinBox->activeSubControls == SC_SpinBoxUp;
-        bool downIsActive = spinBox->activeSubControls == SC_SpinBoxDown;
-        bool hasFocus = option->state & State_HasFocus;
-        bool isEnabled = option->state & State_Enabled;
-        QRect upRect = proxy()->subControlRect(CC_SpinBox, spinBox, SC_SpinBoxUp, widget);
-        QRect downRect = proxy()->subControlRect(CC_SpinBox, spinBox, SC_SpinBoxDown, widget);
-        if (spinBox->frame) {
-            QRect upDownRect = upRect | downRect;
-            upDownRect.adjust(0, -1, 0, 1);
-            painter->save(); // 0
-            // Fill background
-            Ph::paintBorderedRoundRect(painter, rect, rounding, swatch, S_none, S_base);
-            // Draw button fill
-            painter->setClipRect(upDownRect);
-            // Side with the border
-            Qt::Edge edge = isLeftToRight ? Qt::LeftEdge : Qt::RightEdge;
-            Ph::paintBorderedRoundRect(
-                painter, Ph::expandRect(upDownRect, Ph::oppositeEdge(edge), -1), rounding, swatch, S_none, S_button);
-            painter->restore(); // 0
-            if (Ph::OverhangShadows && !hasFocus && isEnabled) {
-                // Imperfect, leaves tiny gap on left and right. Going closer would eat
-                // into the outline, though.
-                QRect shadowRect = rect.adjusted(qRound(rounding / 2), 1, -qRound(rounding / 2), -1);
-                if (isLeftToRight) {
-                    shadowRect.setRight(upDownRect.left());
-                } else {
-                    shadowRect.setLeft(upDownRect.right());
-                }
-                Ph::fillRectEdges(painter, shadowRect, Qt::TopEdge, 1, swatch.color(S_base_shadow));
-            }
-            if ((spinBox->stepEnabled & QAbstractSpinBox::StepUpEnabled) && upIsActive && sunken) {
-                painter->fillRect(upRect, swatch.color(S_button_pressed));
-            }
-            if ((spinBox->stepEnabled & QAbstractSpinBox::StepDownEnabled) && downIsActive && sunken) {
-                painter->fillRect(downRect, swatch.color(S_button_pressed));
-            }
-            // Left or right border line
-            Ph::fillRectEdges(painter, upDownRect, edge, 1, swatch.color(S_window_outline));
-            Ph::PSave save(painter);
-            // Outline over entire frame
-            Swatchy outlineColor = hasFocus ? S_highlight_outline : S_window_outline;
-            Ph::paintBorderedRoundRect(painter, rect, rounding, swatch, outlineColor, S_none);
-            save.restore();
+
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+
+        QRect rect = spinBox->rect;
+        bool enabled = spinBox->state & State_Enabled;
+        bool hasFocus = spinBox->state & State_HasFocus;
+        bool mouseOver = spinBox->state & State_MouseOver;
+        bool upPressed = spinBox->activeSubControls == SC_SpinBoxUp && (spinBox->state & State_Sunken);
+        bool downPressed = spinBox->activeSubControls == SC_SpinBoxDown && (spinBox->state & State_Sunken);
+        bool upHovered = spinBox->activeSubControls == SC_SpinBoxUp && mouseOver;
+        bool downHovered = spinBox->activeSubControls == SC_SpinBoxDown && mouseOver;
+
+        // 获取基础颜色
+        QColor baseSpinBoxColor = isDarkMode() ? QColor("#1E1E1E") : QColor("#FFFFFF");
+        QColor borderColor = isDarkMode() ? QColor("#3C3C3C") : QColor("#CCCCCC");
+        
+        // 背景颜色
+        QColor bgColor = baseSpinBoxColor;
+        if (!enabled) {
+            bgColor.setAlpha(180);
+            borderColor.setAlpha(180);
         }
 
-        if (spinBox->buttonSymbols == QAbstractSpinBox::PlusMinus) {
-            Ph::PSave save(painter);
-            // TODO fix up old fusion code here
+        // 绘制主体背景和边框
+        painter->setPen(QPen(borderColor, 1));
+        painter->setBrush(bgColor);
+        painter->drawRoundedRect(rect.adjusted(0, 0, -1, -1), 11, 11); // 修改圆角为11
+
+        if (spinBox->buttonSymbols != QAbstractSpinBox::NoButtons) {
+            // 获取按钮区域
+            QRect upRect = proxy()->subControlRect(CC_SpinBox, spinBox, SC_SpinBoxUp, widget);
+            QRect downRect = proxy()->subControlRect(CC_SpinBox, spinBox, SC_SpinBoxDown, widget);
+
+            // 绘制分隔线
+            painter->setPen(borderColor);
+            painter->drawLine(upRect.left(), upRect.top() + 6, upRect.left(), downRect.bottom() - 6);
+
+            // 绘制上下箭头
+            QColor arrowColor = enabled ? (isDarkMode() ? QColor("#CCCCCC") : QColor("#666666")) 
+                                      : QColor(120, 120, 120);
+            
+            // 上箭头
+            if (upPressed) {
+                arrowColor.setAlpha(200);
+            } else if (upHovered) {
+                arrowColor = baseColor;
+            }
+            painter->setPen(QPen(arrowColor, 1));
             int centerX = upRect.center().x();
             int centerY = upRect.center().y();
-            Swatchy arrowColorUp =
-                spinBox->stepEnabled & QAbstractSpinBox::StepUpEnabled ? S_indicator_current : S_indicator_disabled;
-            Swatchy arrowColorDown =
-                spinBox->stepEnabled & QAbstractSpinBox::StepDownEnabled ? S_indicator_current : S_indicator_disabled;
-            painter->setPen(swatch.pen(arrowColorUp));
-            painter->drawLine(centerX - 1, centerY, centerX + 3, centerY);
-            painter->drawLine(centerX + 1, centerY - 2, centerX + 1, centerY + 2);
+            QPolygonF upArrow;
+            upArrow << QPointF(centerX - 3, centerY + 1)
+                    << QPointF(centerX, centerY - 2)
+                    << QPointF(centerX + 3, centerY + 1);
+            painter->drawPolyline(upArrow);
+
+            // 下箭头
+            arrowColor = enabled ? (isDarkMode() ? QColor("#CCCCCC") : QColor("#666666")) 
+                               : QColor(120, 120, 120);
+            if (downPressed) {
+                arrowColor.setAlpha(200);
+            } else if (downHovered) {
+                arrowColor = baseColor;
+            }
+            painter->setPen(QPen(arrowColor, 1));
             centerX = downRect.center().x();
             centerY = downRect.center().y();
-            painter->setPen(arrowColorDown);
-            painter->drawLine(centerX - 1, centerY, centerX + 3, centerY);
-        } else if (spinBox->buttonSymbols == QAbstractSpinBox::UpDownArrows) {
-            int xoffs = isLeftToRight ? 0 : 1;
-            Ph::drawArrow(painter,
-                          upRect.adjusted(4 + xoffs, 1, -5 + xoffs, 1),
-                          Qt::UpArrow,
-                          swatch,
-                          spinBox->stepEnabled & QAbstractSpinBox::StepUpEnabled);
-            Ph::drawArrow(painter,
-                          downRect.adjusted(4 + xoffs, 0, -5 + xoffs, -1),
-                          Qt::DownArrow,
-                          swatch,
-                          spinBox->stepEnabled & QAbstractSpinBox::StepDownEnabled);
+            QPolygonF downArrow;
+            downArrow << QPointF(centerX - 3, centerY - 1)
+                      << QPointF(centerX, centerY + 2)
+                      << QPointF(centerX + 3, centerY - 1);
+            painter->drawPolyline(downArrow);
         }
+
+        painter->restore();
         break;
     }
     case CC_TitleBar: {
@@ -3928,71 +4310,99 @@ void BaseStyle::drawComplexControl(ComplexControl control,
         auto comboBox = qstyleoption_cast<const QStyleOptionComboBox*>(option);
         if (!comboBox)
             break;
+
         painter->save();
-        bool isLeftToRight = option->direction != Qt::RightToLeft;
-        bool hasFocus = option->state & State_HasFocus && option->state & State_KeyboardFocusChange;
-        bool isSunken = comboBox->state & State_Sunken;
+        painter->setRenderHint(QPainter::Antialiasing);
+        painter->setRenderHint(QPainter::TextAntialiasing);  // 添加文本抗锯齿
+
         QRect rect = comboBox->rect;
-        QRect downArrowRect = proxy()->subControlRect(CC_ComboBox, comboBox, SC_ComboBoxArrow, widget);
-        // Draw a line edit
-        if (comboBox->editable) {
-            Swatchy buttonFill = isSunken ? S_button_pressed : S_button;
-            // if (!hasOptions)
-            //   buttonFill = S_window;
-            painter->fillRect(rect, swatch.color(buttonFill));
-            if (comboBox->frame) {
-                QStyleOptionFrame buttonOption;
-                buttonOption.QStyleOption::operator=(*comboBox);
-                buttonOption.rect = rect;
-                buttonOption.state =
-                    (comboBox->state & (State_Enabled | State_MouseOver | State_HasFocus)) | State_KeyboardFocusChange;
-                if (isSunken) {
-                    buttonOption.state |= State_Sunken;
-                    buttonOption.state &= ~State_MouseOver;
-                }
-                proxy()->drawPrimitive(PE_FrameLineEdit, &buttonOption, painter, widget);
-                QRect fr = proxy()->subControlRect(CC_ComboBox, option, SC_ComboBoxEditField, widget);
-                QRect br = rect;
-                if (isLeftToRight) {
-                    br.setLeft(fr.x() + fr.width());
-                } else {
-                    br.setRight(fr.left() - 1);
-                }
-                Qt::Edge edge = isLeftToRight ? Qt::LeftEdge : Qt::RightEdge;
-                Swatchy color = hasFocus ? S_highlight_outline : S_window_outline;
-                br.adjust(0, 1, 0, -1);
-                Ph::fillRectEdges(painter, br, edge, 1, swatch.color(color));
-                br.adjust(1, 0, -1, 0);
-                Swatchy specular = isSunken ? S_button_pressed_specular : S_button_specular;
-                Ph::fillRectOutline(painter, br, 1, swatch.color(specular));
-            }
-        } else {
-            QStyleOptionButton buttonOption;
-            buttonOption.QStyleOption::operator=(*comboBox);
-            buttonOption.rect = rect;
-            buttonOption.state =
-                comboBox->state
-                & (State_Enabled | State_MouseOver | State_HasFocus | State_Active | State_KeyboardFocusChange);
-            // Combo boxes should be shown to be keyboard interactive if they're
-            // focused at all, not just if the user has pressed tab to enter keyboard
-            // focus change mode. This is because the up/down arrows can, regardless
-            // of having pressed tab, control the combo box selection.
-            if (comboBox->state & State_HasFocus)
-                buttonOption.state |= State_KeyboardFocusChange;
-            if (isSunken) {
-                buttonOption.state |= State_Sunken;
-                buttonOption.state &= ~State_MouseOver;
-            }
-            proxy()->drawPrimitive(PE_PanelButtonCommand, &buttonOption, painter, widget);
+        bool enabled = comboBox->state & State_Enabled;
+        bool hasFocus = comboBox->state & State_HasFocus;
+        bool mouseOver = comboBox->state & State_MouseOver;
+        bool pressed = comboBox->state & State_Sunken;
+        bool editable = comboBox->editable;
+
+        // 获取箭头区域
+        QRect arrowRect = proxy()->subControlRect(CC_ComboBox, comboBox, SC_ComboBoxArrow, widget);
+        QRect editRect = proxy()->subControlRect(CC_ComboBox, comboBox, SC_ComboBoxEditField, widget);
+
+        // 获取基础颜色
+        QColor baseComboColor = isDarkMode() ? QColor("#1E1E1E") : QColor("#FFFFFF");
+        QColor borderColor = isDarkMode() ? QColor("#3C3C3C") : QColor("#CCCCCC");
+        QColor arrowColor = isDarkMode() ? QColor("#CCCCCC") : QColor("#666666");
+
+        // 背景颜色
+        QColor bgColor = baseComboColor;
+        if (!enabled) {
+            bgColor.setAlpha(180);
+            borderColor.setAlpha(180);
+        } else if (pressed) {
+            bgColor = bgColor.darker(105);
+        } else if (mouseOver) {
+            bgColor = bgColor.lighter(103);
         }
+
+        // 绘制主体背景和边框
+        painter->setPen(QPen(borderColor, 1));
+        painter->setBrush(bgColor);
+        painter->drawRoundedRect(rect.adjusted(0, 0, -1, -1), 11, 11);
+
+        // 绘制分隔线（如果是可编辑的）
+        if (editable) {
+            painter->setPen(borderColor);
+            painter->drawLine(arrowRect.left(), arrowRect.top() + 6,
+                             arrowRect.left(), arrowRect.bottom() - 6);
+        }
+
+        // 绘制下拉箭头
         if (comboBox->subControls & SC_ComboBoxArrow) {
-            int margin =
-                static_cast<int>(qMin(downArrowRect.width(), downArrowRect.height()) * Ph::ComboBox_ArrowMarginRatio);
-            QRect r = downArrowRect;
-            r.adjust(margin, margin, -margin, -margin);
-            // Draw the up/down arrow
-            Ph::drawArrow(painter, r, Qt::DownArrow, swatch);
+            if (!enabled) {
+                arrowColor.setAlpha(180);
+            } else if (pressed) {
+                arrowColor.setAlpha(200);
+            } else if (mouseOver) {
+                arrowColor = baseColor;
+            }
+
+            painter->setPen(QPen(arrowColor, 1.2));
+            
+            // 绘制箭头
+            int centerX = arrowRect.center().x();
+            int centerY = arrowRect.center().y();
+            const int arrowSize = 4;
+            
+            QPolygonF arrow;
+            arrow << QPointF(centerX - arrowSize, centerY - arrowSize/2)
+                  << QPointF(centerX, centerY + arrowSize/2)
+                  << QPointF(centerX + arrowSize, centerY - arrowSize/2);
+            
+            painter->drawPolyline(arrow);
         }
+
+        // 绘制文本（如果不是可编辑的）
+        // if (!editable && !comboBox->currentText.isEmpty()) {
+        //     QRect textRect = editRect;
+        //     textRect.adjust(6, 0, -6, 0); // 添加水平内边距
+            
+        //     QString text = comboBox->currentText;
+        //     QFontMetrics fm(comboBox->fontMetrics);
+        //     text = fm.elidedText(text, Qt::ElideRight, textRect.width());
+
+        //     QColor textColor;
+        //     if (!enabled) {
+        //         textColor = isDarkMode() ? QColor("#808080") : QColor("#A0A0A0");
+        //     } else {
+        //         textColor = isDarkMode() ? Qt::white : Qt::black;
+        //     }
+
+        //     // 清除之前的文本渲染设置
+        //     painter->setCompositionMode(QPainter::CompositionMode_SourceOver);
+            
+        //     // 设置文本颜色和绘制文本
+        //     painter->setPen(textColor);
+        //     painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, text);
+        // }
+
         painter->restore();
         break;
     }
@@ -4000,109 +4410,175 @@ void BaseStyle::drawComplexControl(ComplexControl control,
         auto slider = qstyleoption_cast<const QStyleOptionSlider*>(option);
         if (!slider)
             break;
-        const QRect groove = proxy()->subControlRect(CC_Slider, option, SC_SliderGroove, widget);
-        const QRect handle = proxy()->subControlRect(CC_Slider, option, SC_SliderHandle, widget);
+
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+
+        QRect groove = proxy()->subControlRect(CC_Slider, slider, SC_SliderGroove, widget);
+        QRect handle = proxy()->subControlRect(CC_Slider, slider, SC_SliderHandle, widget);
+
         bool horizontal = slider->orientation == Qt::Horizontal;
-        bool ticksAbove = slider->tickPosition & QSlider::TicksAbove;
-        bool ticksBelow = slider->tickPosition & QSlider::TicksBelow;
-        Swatchy outlineColor = S_window_outline;
-        if (option->state & State_HasFocus && option->state & State_KeyboardFocusChange)
-            outlineColor = S_highlight_outline;
-        if ((option->subControls & SC_SliderGroove) && groove.isValid()) {
-            QRect g0 = groove;
-            if (g0.height() > 5)
-                g0.adjust(0, 1, 0, -1);
-            Ph::PSave saver(painter);
-            Swatchy gutterColor = option->state & State_Enabled ? S_scrollbarGutter : S_window;
-            Ph::paintBorderedRoundRect(painter, groove, Ph::SliderGroove_Rounding, swatch, outlineColor, gutterColor);
-        }
-        if (option->subControls & SC_SliderTickmarks) {
-            Ph::PSave save(painter);
-            painter->setPen(swatch.pen(S_window_outline));
-            int tickSize = proxy()->pixelMetric(PM_SliderTickmarkOffset, option, widget);
-            int available = proxy()->pixelMetric(PM_SliderSpaceAvailable, slider, widget);
-            int interval = slider->tickInterval;
-            if (interval <= 0) {
-                interval = slider->singleStep;
-                if (QStyle::sliderPositionFromValue(slider->minimum, slider->maximum, interval, available)
-                        - QStyle::sliderPositionFromValue(slider->minimum, slider->maximum, 0, available)
-                    < 3)
-                    interval = slider->pageStep;
-            }
-            if (interval <= 0)
-                interval = 1;
+        bool enabled = slider->state & State_Enabled;
+        bool pressed = slider->state & State_Sunken;
+        bool hovered = slider->state & State_MouseOver;
 
-            int v = slider->minimum;
-            int len = proxy()->pixelMetric(PM_SliderLength, slider, widget);
-            while (v <= slider->maximum + 1) {
-                if (v == slider->maximum + 1 && interval == 1)
-                    break;
-                const int v_ = qMin(v, slider->maximum);
-                int pos = sliderPositionFromValue(slider->minimum,
-                                                  slider->maximum,
-                                                  v_,
-                                                  (horizontal ? slider->rect.width() : slider->rect.height()) - len,
-                                                  slider->upsideDown)
-                          + len / 2;
-                int extra = 2 - ((v_ == slider->minimum || v_ == slider->maximum) ? 1 : 0);
+        // 绘制轨道
+        if (slider->subControls & SC_SliderGroove) {
+            // 轨道高度
+            const int grooveHeight = 4;
+            
+            // 调整轨道位置使其垂直居中
+            if (horizontal) {
+                groove.setHeight(grooveHeight);
+                groove.moveCenter(slider->rect.center());
+            } else {
+                groove.setWidth(grooveHeight);
+                groove.moveCenter(slider->rect.center());
+            }
 
-                if (horizontal) {
-                    if (ticksAbove) {
-                        painter->drawLine(pos, slider->rect.top() + extra, pos, slider->rect.top() + tickSize);
-                    }
-                    if (ticksBelow) {
-                        painter->drawLine(pos, slider->rect.bottom() - extra, pos, slider->rect.bottom() - tickSize);
-                    }
-                } else {
-                    if (ticksAbove) {
-                        painter->drawLine(slider->rect.left() + extra, pos, slider->rect.left() + tickSize, pos);
-                    }
-                    if (ticksBelow) {
-                        painter->drawLine(slider->rect.right() - extra, pos, slider->rect.right() - tickSize, pos);
-                    }
-                }
-                // in the case where maximum is max int
-                int nextInterval = v + interval;
-                if (nextInterval < v)
-                    break;
-                v = nextInterval;
+            // 计算已填充部分的矩形
+            QRect filledGroove = groove;
+            if (horizontal) {
+                filledGroove.setWidth(handle.center().x() - groove.left());
+            } else {
+                filledGroove.setTop(handle.center().y());
+                filledGroove.setBottom(groove.bottom());
+            }
+
+            // 绘制未填充部分（灰色背景）
+            QColor grooveColor = isDarkMode() ? QColor(60, 60, 60) : QColor(200, 200, 200);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(grooveColor);
+            painter->drawRoundedRect(groove, grooveHeight/2, grooveHeight/2);
+
+            // 绘制已填充部分（主题色）
+            QColor activeColor = baseColor;
+            if (!enabled) {
+                activeColor.setAlpha(120);
+            } else if (hovered || pressed) {
+                activeColor = activeColor.lighter(110);
+            }
+            painter->setBrush(activeColor);
+            painter->drawRoundedRect(filledGroove, grooveHeight/2, grooveHeight/2);
+        }
+
+        // 绘制滑块
+        if (slider->subControls & SC_SliderHandle) {
+            // 滑块大小
+            const int handleSize = 16;
+            QRect handleRect = handle;
+            
+            // 调整滑块大小
+            if (horizontal) {
+                handleRect.setWidth(handleSize);
+                handleRect.setHeight(handleSize);
+                handleRect.moveCenter(QPoint(handle.center().x(), groove.center().y()));
+            } else {
+                handleRect.setWidth(handleSize);
+                handleRect.setHeight(handleSize);
+                handleRect.moveCenter(QPoint(groove.center().x(), handle.center().y()));
+            }
+
+            // 滑块颜色
+            QColor handleColor = Qt::white;
+            if (!enabled) {
+                handleColor.setAlpha(180);
+            }
+
+            // 绘制滑块阴影
+            if (enabled) {
+                QColor shadowColor(0, 0, 0, 30);
+                painter->setPen(Qt::NoPen);
+                painter->setBrush(shadowColor);
+                painter->drawEllipse(handleRect.adjusted(0, 1, 0, 1));
+            }
+
+            // 绘制滑块
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(handleColor);
+            painter->drawEllipse(handleRect);
+
+            // 如果被按下或悬停，添加边框效果
+            if (enabled && (pressed || hovered)) {
+                painter->setPen(QPen(baseColor.lighter(110), 1));
+                painter->setBrush(Qt::NoBrush);
+                painter->drawEllipse(handleRect);
             }
         }
-        // draw handle
-        if ((option->subControls & SC_SliderHandle)) {
-            bool isPressed = option->state & QStyle::State_Sunken && option->activeSubControls & SC_SliderHandle;
-            QRect r = handle;
-            Swatchy handleOutline, handleFill, handleSpecular;
-            if (option->state & State_HasFocus && option->state & State_KeyboardFocusChange) {
-                handleOutline = S_highlight_outline;
-            } else {
-                handleOutline = S_window_outline;
-            }
-            if (isPressed) {
-                handleFill = S_sliderHandle_pressed;
-                handleSpecular = S_sliderHandle_pressed_specular;
-            } else {
-                handleFill = S_sliderHandle;
-                handleSpecular = S_sliderHandle_specular;
-            }
-            Ph::PSave save(painter);
-            Ph::paintBorderedRoundRect(painter, r, Ph::SliderHandle_Rounding, swatch, handleOutline, handleFill);
-            r.adjust(1, 1, -1, -1);
-            Ph::paintBorderedRoundRect(painter, r, Ph::SliderHandle_Rounding, swatch, handleSpecular, S_none);
-        }
+
+        painter->restore();
         break;
     }
     case CC_ToolButton: {
         auto tbopt = qstyleoption_cast<const QStyleOptionToolButton*>(option);
-        if (Ph::AllowToolBarAutoRaise || !tbopt || !widget || !widget->parent()
-            || !widget->parent()->inherits("QToolBar")) {
-            QCommonStyle::drawComplexControl(control, option, painter, widget);
-            break;
+        if (!tbopt || !widget) {
+            break;  // 如果转换失败或没有 widget，直接退出
         }
-        QStyleOptionToolButton opt_;
-        opt_.QStyleOptionToolButton::operator=(*tbopt);
-        opt_.state &= ~State_AutoRaise;
-        QCommonStyle::drawComplexControl(control, &opt_, painter, widget);
+
+        QPainterPath path;
+        QRect rect = tbopt->rect;
+        bool enabled = tbopt->state & QStyle::State_Enabled;
+        bool pressed = tbopt->state & QStyle::State_Sunken;
+        bool hovered = tbopt->state & QStyle::State_MouseOver;
+        bool checked = tbopt->state & QStyle::State_On;
+
+        // macOS 风格的工具按钮通常具有圆角
+        int radius = 6;
+
+        // 绘制背景
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing, true);
+
+        QColor bgColor;
+        if (!enabled) {
+            bgColor = QColor(200, 200, 200, 120);  // 禁用状态，半透明灰色
+        } else if (pressed) {
+            bgColor = QColor(220, 220, 220);  // 按下状态，浅灰色
+        } else if (hovered) {
+            bgColor = QColor(240, 240, 240);  // 悬停状态，高亮白色
+        } else {
+            bgColor = Qt::transparent;  // 默认透明
+        }
+
+        if (bgColor != Qt::transparent) {
+            path.addRoundedRect(rect, radius, radius);
+            painter->fillPath(path, bgColor);
+        }
+
+        // 绘制图标
+        if (!tbopt->icon.isNull()) {
+            QIcon::Mode mode = enabled ? QIcon::Normal : QIcon::Disabled;
+            if (checked) {
+                mode = QIcon::Selected;
+            } else if (hovered && !pressed) {
+                mode = QIcon::Active;
+            }
+
+            QIcon::State state = checked ? QIcon::On : QIcon::Off;
+            QPixmap pixmap = tbopt->icon.pixmap(tbopt->iconSize, mode, state);
+
+            QRect iconRect = rect;
+            iconRect.setSize(pixmap.size());
+            iconRect.moveCenter(rect.center());
+
+            painter->drawPixmap(iconRect.topLeft(), pixmap);
+        }
+
+        // 绘制文本
+        if (!tbopt->text.isEmpty()) {
+            QRect textRect = rect;
+            QColor textColor;
+            if (!enabled) {
+                textColor = QColor(150, 150, 150);  // 禁用状态，灰色文本
+            } else {
+                textColor = QColor(50, 50, 50);  // 默认深色文本
+            }
+
+            painter->setPen(textColor);
+            painter->drawText(textRect, Qt::AlignCenter, tbopt->text);
+        }
+
+        painter->restore();
         break;
     }
     case CC_Dial:
