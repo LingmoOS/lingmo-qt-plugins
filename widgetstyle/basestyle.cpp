@@ -4512,7 +4512,7 @@ void BaseStyle::drawComplexControl(ComplexControl control,
     case CC_ToolButton: {
         auto tbopt = qstyleoption_cast<const QStyleOptionToolButton*>(option);
         if (!tbopt || !widget) {
-            break;  // 如果转换失败或没有 widget，直接退出
+            break;
         }
 
         QPainterPath path;
@@ -4531,13 +4531,18 @@ void BaseStyle::drawComplexControl(ComplexControl control,
 
         QColor bgColor;
         if (!enabled) {
-            bgColor = QColor(200, 200, 200, 120);  // 禁用状态，半透明灰色
-        } else if (pressed) {
-            bgColor = QColor(220, 220, 220);  // 按下状态，浅灰色
+            // 禁用状态
+            bgColor = isDarkMode() ? QColor(255, 255, 255, 40) : QColor(0, 0, 0, 40);
+        } else if (pressed || checked) {
+            // 按下或选中状态
+            bgColor = baseColor;
         } else if (hovered) {
-            bgColor = QColor(240, 240, 240);  // 悬停状态，高亮白色
+            // 悬停状态
+            bgColor = baseColor;
+            bgColor.setAlpha(50);
         } else {
-            bgColor = Qt::transparent;  // 默认透明
+            // 正常状态
+            bgColor = isDarkMode() ? QColor(255, 255, 255, 15) : QColor(0, 0, 0, 15);
         }
 
         if (bgColor != Qt::transparent) {
@@ -4545,33 +4550,62 @@ void BaseStyle::drawComplexControl(ComplexControl control,
             painter->fillPath(path, bgColor);
         }
 
+        // 判断显示内容
+        bool hasIcon = !tbopt->icon.isNull();  // 是否有图标
+        bool hasText = !tbopt->text.isEmpty(); // 是否有文字
+        bool textBesideIcon = tbopt->toolButtonStyle == Qt::ToolButtonTextBesideIcon;
+        bool textUnderIcon = tbopt->toolButtonStyle == Qt::ToolButtonTextUnderIcon;
+        bool textOnly = tbopt->toolButtonStyle == Qt::ToolButtonTextOnly;
+        bool iconOnly = tbopt->toolButtonStyle == Qt::ToolButtonIconOnly;
+
         // 绘制图标
-        if (!tbopt->icon.isNull()) {
+        if (hasIcon && !textOnly) {
+            QRect iconRect;
+            if (textBesideIcon) {
+                iconRect = rect;
+                iconRect.setWidth(rect.height());
+            } else if (textUnderIcon) {
+                iconRect = rect;
+                iconRect.setHeight(rect.height() * 0.7);
+            } else {
+                iconRect = rect;
+            }
+
             QIcon::Mode mode = enabled ? QIcon::Normal : QIcon::Disabled;
-            if (checked) {
-                mode = QIcon::Selected;
-            } else if (hovered && !pressed) {
+            if (pressed || checked) {
+                painter->setBrush(Qt::white);
+                mode = QIcon::Normal;
+            } else if (hovered) {
                 mode = QIcon::Active;
             }
 
             QIcon::State state = checked ? QIcon::On : QIcon::Off;
             QPixmap pixmap = tbopt->icon.pixmap(tbopt->iconSize, mode, state);
-
-            QRect iconRect = rect;
-            iconRect.setSize(pixmap.size());
-            iconRect.moveCenter(rect.center());
-
-            painter->drawPixmap(iconRect.topLeft(), pixmap);
+            proxy()->drawItemPixmap(painter, iconRect, Qt::AlignCenter, pixmap);
         }
 
-        // 绘制文本
-        if (!tbopt->text.isEmpty()) {
-            QRect textRect = rect;
+        // 绘制文字
+        if (hasText && !iconOnly) {
+            QRect textRect;
+            if (textBesideIcon && hasIcon) {
+                textRect = rect;
+                textRect.setLeft(rect.height() + 4);
+            } else if (textUnderIcon && hasIcon) {
+                textRect = rect;
+                textRect.setTop(rect.height() * 0.7);
+            } else {
+                textRect = rect;
+            }
+
+            // 设置文字颜色
             QColor textColor;
             if (!enabled) {
-                textColor = QColor(150, 150, 150);  // 禁用状态，灰色文本
+                textColor = isDarkMode() ? QColor(255, 255, 255, 80) : QColor(0, 0, 0, 80);
+            } else if (pressed || checked) {
+                // 按下或选中状态文字变白
+                textColor = Qt::white;
             } else {
-                textColor = QColor(50, 50, 50);  // 默认深色文本
+                textColor = isDarkMode() ? Qt::white : Qt::black;
             }
 
             painter->setPen(textColor);
@@ -5099,6 +5133,18 @@ void BaseStyle::polish(QWidget *widget)
             ) {
         widget->setAttribute(Qt::WA_Hover, true);
         widget->setAttribute(Qt::WA_OpaquePaintEvent, false);
+
+        // 监听主题变化
+        if (qobject_cast<QPushButton*>(widget)) {
+            QDBusConnection::sessionBus().connect(
+                "com.lingmo.Settings",
+                "/Theme",
+                "com.lingmo.Theme",
+                "darkModeChanged",
+                widget,
+                SLOT(update())
+            );
+        }
     }
 
     if (qobject_cast<QMenu *>(widget)) {
@@ -5128,6 +5174,18 @@ void BaseStyle::unpolish(QWidget *widget)
             || (widget->inherits("QDockWidgetSeparator"))
             ) {
         widget->setAttribute(Qt::WA_Hover, false);
+
+        // 断开主题变化的连接
+        if (qobject_cast<QPushButton*>(widget)) {
+            QDBusConnection::sessionBus().disconnect(
+                "com.lingmo.Settings",
+                "/Theme",
+                "com.lingmo.Theme",
+                "darkModeChanged",
+                widget,
+                SLOT(update())
+            );
+        }
     }
 
     if (qobject_cast<QMenu *>(widget)) {
