@@ -11,7 +11,8 @@
 #include <QLibrary>
 #include <QStyleFactory>
 #include <QtQuickControls2/QQuickStyle>
-
+#include <QStyle>
+#include <QSettings>
 // Qt Private
 #include <private/qicon_p.h>
 #include <private/qiconloader_p.h>
@@ -44,13 +45,13 @@ extern void updateXdgIconSystemTheme();
 
 void onDarkModeChanged()
 {
-    if (qApp->applicationName() == "systemsettings"
-                || qApp->applicationName().contains("plasma")
-                || qApp->applicationName().contains("QtCreator")) {
-        return;
-    }
+    // if (qApp->applicationName() == "systemsettings"
+    //             || qApp->applicationName().contains("plasma")
+    //             || qApp->applicationName().contains("QtCreator")) {
+    //     return;
+    // }
 
-    QStyle *style = QStyleFactory::create("lingmo");
+    QStyle *style = QStyleFactory::create("Ocean");
     if (style) {
         qApp->setStyle(style);
     }
@@ -207,7 +208,7 @@ void PlatformTheme::setQtQuickControlsTheme()
     if (qApp->applicationName() == "systemsettings"
             || qApp->applicationName().contains("plasma")) {
         QQuickStyle::setStyle("Plasma");
-        QStyle *style = QStyleFactory::create("Breeze");
+        QStyle *style = QStyleFactory::create("Ocean");
         qApp->setStyle(style);
         return;
     }

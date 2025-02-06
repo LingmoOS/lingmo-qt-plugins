@@ -1924,34 +1924,35 @@ void BaseStyle::drawPrimitive(PrimitiveElement elem,
         bool isReadOnly = lineEdit->state & State_ReadOnly;
 
         // 获取基础颜色
-        QColor baseColor = isDarkMode() ? QColor("#1E1E1E") : QColor("#FFFFFF");
-        QColor borderColor = isDarkMode() ? QColor("#3C3C3C") : QColor("#CCCCCC");
+        QColor defColor = isDarkMode() ? QColor("#1E1E1E") : QColor("#FFFFFF");
+        QColor borderColor = isDarkMode() ? QColor("#3C3C3C") : QColor("#DADADA");
 
         // 背景颜色
-        QColor bgColor = baseColor;
+        QColor bgColor = defColor;
         if (!enabled || isReadOnly) {
             bgColor = isDarkMode() ? QColor("#2A2A2A") : QColor("#F5F5F5");
             borderColor.setAlpha(180);
         } else if (hasFocus) {
-            borderColor = ::baseColor;  // 使用全局变量 baseColor
+            borderColor = baseColor;  // macOS 焦点时的蓝色
         } else if (mouseOver) {
             borderColor = borderColor.darker(110);
         }
 
         // 绘制背景
-        painter->setPen(QPen(borderColor, 1));
+        painter->setPen(QPen(borderColor, 1.5));
         painter->setBrush(bgColor);
-        painter->drawRoundedRect(rect.adjusted(0, 0, -1, -1), 11, 11);
+        painter->drawRoundedRect(rect.adjusted(1, 1, -1, -1), 8, 8);
+        painter->setRenderHint(QPainter::Antialiasing);
 
         // 如果有焦点，绘制发光效果
-        if (hasFocus && enabled && !isReadOnly) {
-            QColor glowColor = ::baseColor;  // 使用全局变量 baseColor
-            glowColor.setAlpha(50);
+        // if (hasFocus && enabled && !isReadOnly) {
+        //     QColor glowColor = QColor("#007aff");  // macOS 焦点时的蓝色
+        //     glowColor.setAlpha(50);
             
-            painter->setPen(Qt::NoPen);
-            painter->setBrush(glowColor);
-            painter->drawRoundedRect(rect.adjusted(-2, -2, 1, 1), 11, 11);
-        }
+        //     painter->setPen(Qt::NoPen);
+        //     painter->setBrush(glowColor);
+        //     painter->drawRoundedRect(rect.adjusted(-2, -2, 1, 1), 8, 8);  // 扩展发光区域
+        // }
 
         painter->restore();
         break;
@@ -3212,119 +3213,140 @@ void BaseStyle::drawControl(ControlElement element,
         auto button = qstyleoption_cast<const QStyleOptionButton*>(option);
         if (!button)
             break;
-        // Apply stylesheet to set default background color and hover effect
-        if (widget) {
-            auto nonConstWidget = const_cast<QWidget*>(widget);
-            QString baseColorString;
-            QString hoverColorString;
-            QString pressedColorString;
-            QString textColorString;
-            QString disabledTextColorString = QColor("#A0A0A0").name(); // Light gray color for disabled text
 
-            if (button->features & QStyleOptionButton::DefaultButton) {
-                // Use grey color for Cancel button
-                baseColorString = baseColor.name(); // Convert QColor to string
-                hoverColorString = baseColor.lighter(110).name(); // Increase brightness by 20%
-                pressedColorString = baseColor.darker(120).name(); // Decrease brightness by 20%
-                textColorString = "white";
-            } else {
-                // Use baseColor for other buttons
-                if (isDarkMode()) {
-                    baseColorString = QColor("#3C3C3D").name(); // Dark mode color
-                    textColorString = "white";
-                } else {
-                    baseColorString = QColor("#DEDEDE").name(); // Light mode color
-                    textColorString = "black";
-                }
-                hoverColorString = QColor(baseColorString).lighter(120).name(); // Increase brightness by 20%
-                pressedColorString = QColor(baseColorString).darker(120).name(); // Decrease brightness by 20%
+        // 保存画笔状态
+        painter->save();
+        painter->setRenderHint(QPainter::Antialiasing);
+
+        QRect rect = button->rect;
+        bool enabled = button->state & State_Enabled;
+        bool hasFocus = button->state & State_HasFocus;
+        bool mouseOver = button->state & State_MouseOver;
+        bool pressed = button->state & State_Sunken;
+        bool isDefault = button->features & QStyleOptionButton::DefaultButton;
+
+        // 计算背景颜色
+        QColor bgColor;
+        if (isDefault) {
+            bgColor = baseColor;
+            if (!enabled) {
+                bgColor.setAlpha(180);
+            } else if (pressed) {
+                bgColor = bgColor.darker(120);
+            } else if (mouseOver) {
+                bgColor = bgColor.lighter(110);
             }
-
-            // 根据文本内容计算按钮宽度
-            QFontMetrics fm(widget->font());
-            int textWidth = fm.horizontalAdvance(button->text);
-            int buttonWidth = textWidth + 12; // 每边添加 6 个像素内边距
-
-            nonConstWidget->setStyleSheet(
-                QString(
-                    "QPushButton {"
-                    "    background-color: %1;" // Use baseColor for default background color
-                    "    border-radius: 11px;" // 调整圆角大小
-                    "    padding: 4px 12px;" // 减小上下padding
-                    "    min-height: 26px;" // 减小最小高度
-                    "    color: %4;"
-                    "}"
-                    "QPushButton:hover {"
-                    "    background-color: %2;" // Background color on hover
-                    "}"
-                    "QPushButton:pressed {"
-                    "    background-color: %3;" // Background color when pressed
-                    "}"
-                    "QPushButton:disabled {"
-                    "    background-color: %1;" // Use baseColor for disabled background color
-                    "    color: %5;" // Set text color for disabled state
-                    "}")
-                    .arg(baseColorString)
-                    .arg(hoverColorString)
-                    .arg(pressedColorString)
-                    .arg(textColorString)
-                    .arg(disabledTextColorString)
-            );
+        } else {
+            bgColor = isDarkMode() ? QColor("#3C3C3D") : QColor("#DEDEDE");
+            if (!enabled) {
+                bgColor.setAlpha(180);
+            } else if (pressed) {
+                bgColor = bgColor.darker(120);
+            } else if (mouseOver) {
+                bgColor = bgColor.lighter(105);
+            }
         }
-        QRect textRect = button->rect;
-        int tf = Qt::AlignVCenter | Qt::TextShowMnemonic;
-        if (!proxy()->styleHint(SH_UnderlineShortcut, button, widget))
-            tf |= Qt::TextHideMnemonic;
-        if (!button->icon.isNull()) {
-            // Center both icon and text
+
+        // 绘制背景
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(bgColor);
+        painter->drawRoundedRect(rect.adjusted(3, -3, -3, 3), 8, 8);
+
+        // 计算文本颜色
+        QColor textColor;
+        if (!enabled) {
+            textColor = QColor("#A0A0A0");
+        } else if (isDefault) {
+            textColor = Qt::white;
+        } else {
+            textColor = isDarkMode() ? Qt::white : Qt::black;
+        }
+
+        // 绘制图标和文字
+        if (!button->icon.isNull() || !button->text.isEmpty()) {
             QRect iconRect;
-            QIcon::Mode mode = button->state & State_Enabled ? QIcon::Normal : QIcon::Disabled;
+            QRect textRect;
+            int iconSpacing = 4;
+            int totalWidth = 0;
+            
+            QIcon::Mode mode = enabled ? QIcon::Normal : QIcon::Disabled;
             QIcon::State state = button->state & State_On ? QIcon::On : QIcon::Off;
             auto window = widget ? widget->window()->windowHandle() : nullptr;
-            QPixmap pixmap = button->icon.pixmap(window, button->iconSize, mode, state);
-            int pixmapWidth = static_cast<int>(pixmap.width() / pixmap.devicePixelRatio());
-            int pixmapHeight = static_cast<int>(pixmap.height() / pixmap.devicePixelRatio());
-            int labelWidth = pixmapWidth;
-            int labelHeight = pixmapHeight;
-            // 4 is hardcoded in QPushButton::sizeHint()
-            int iconSpacing = 4;
-            int textWidth = button->fontMetrics.boundingRect(option->rect, tf, button->text).width();
-            if (!button->text.isEmpty())
-                labelWidth += (textWidth + iconSpacing);
-            iconRect = QRect(textRect.x() + (textRect.width() - labelWidth) / 2,
-                             textRect.y() + (textRect.height() - labelHeight) / 2,
-                             pixmapWidth,
-                             pixmapHeight);
-            iconRect = visualRect(button->direction, textRect, iconRect);
-            tf |= Qt::AlignLeft; // left align, we adjust the text-rect instead
-            if (button->direction == Qt::RightToLeft)
-                textRect.setRight(iconRect.left() - iconSpacing);
-            else
-                textRect.setLeft(iconRect.left() + iconRect.width() + iconSpacing);
-            if (button->state & (State_On | State_Sunken))
-                iconRect.translate(proxy()->pixelMetric(PM_ButtonShiftHorizontal, option, widget),
-                                   proxy()->pixelMetric(PM_ButtonShiftVertical, option, widget));
-            painter->drawPixmap(iconRect, pixmap);
-        } else {
-            tf |= Qt::AlignHCenter;
+
+            // 计算图标宽度
+            if (!button->icon.isNull()) {
+                QPixmap pixmap = button->icon.pixmap(window, button->iconSize, mode, state);
+                
+                int pixmapWidth = static_cast<int>(pixmap.width() / pixmap.devicePixelRatio());
+                int pixmapHeight = static_cast<int>(pixmap.height() / pixmap.devicePixelRatio());
+                totalWidth += pixmapWidth;
+                
+                // 计算图标位置
+                iconRect = QRect(rect.x() + (rect.width() - totalWidth) / 2,
+                                rect.y() + (rect.height() - pixmapHeight) / 2,
+                                pixmapWidth, pixmapHeight);
+                
+                // 如果按下，图标略微下移
+                if (pressed) {
+                    iconRect.translate(0, 1);
+                }
+            }
+
+            // 计算文本宽度和总宽度
+            int textWidth = 0;
+            if (!button->text.isEmpty()) {
+                int tf = Qt::AlignCenter | Qt::TextShowMnemonic;
+                if (!proxy()->styleHint(SH_UnderlineShortcut, button, widget)) {
+                    tf |= Qt::TextHideMnemonic;
+                }
+                textWidth = button->fontMetrics.boundingRect(rect, tf, button->text).width();
+                if (!button->icon.isNull()) {
+                    totalWidth += iconSpacing + textWidth;
+                } else {
+                    totalWidth = textWidth;
+                }
+            }
+
+            // 重新计算起始位置，使整体居中
+            int startX = rect.x() + (rect.width() - totalWidth) / 2;
+            
+            // 如果有图标，重新调整图标位置
+            if (!button->icon.isNull()) {
+                iconRect.moveLeft(startX);
+                startX = iconRect.right() + iconSpacing;
+            }
+
+            // 绘制图标
+            if (!button->icon.isNull()) {
+                QPixmap pixmap = button->icon.pixmap(window, button->iconSize, mode, state);
+                painter->drawPixmap(iconRect, pixmap);
+            }
+
+            // 绘制文本
+            if (!button->text.isEmpty()) {
+                textRect = rect;
+                if (!button->icon.isNull()) {
+                    textRect.setLeft(startX);
+                    textRect.setWidth(textWidth);
+                }
+                
+                // 如果按下，文本略微下移
+                if (pressed) {
+                    textRect.translate(0, 1);
+                }
+
+                int tf = button->icon.isNull() ? Qt::AlignCenter : Qt::AlignLeft | Qt::AlignVCenter;
+                tf |= Qt::TextShowMnemonic;
+                if (!proxy()->styleHint(SH_UnderlineShortcut, button, widget)) {
+                    tf |= Qt::TextHideMnemonic;
+                }
+                
+                painter->setPen(textColor);
+                painter->drawText(textRect, tf, button->text);
+            }
         }
-        if (button->state & (State_On | State_Sunken))
-            textRect.translate(proxy()->pixelMetric(PM_ButtonShiftHorizontal, option, widget),
-                               proxy()->pixelMetric(PM_ButtonShiftVertical, option, widget));
-        if (button->features & QStyleOptionButton::HasMenu) {
-            int indicatorSize = proxy()->pixelMetric(PM_MenuButtonIndicator, button, widget);
-            if (button->direction == Qt::LeftToRight)
-                textRect = textRect.adjusted(0, 0, -indicatorSize, 0);
-            else
-                textRect = textRect.adjusted(indicatorSize, 0, 0, 0);
-        }
-        proxy()->drawItemText(painter,
-                              textRect,
-                              tf,
-                              button->palette,
-                              (button->state & State_Enabled),
-                              button->text,
-                              QPalette::ButtonText);
+
+        painter->restore();
         break;
     }
     case CE_MenuBarEmptyArea: {
@@ -3779,49 +3801,6 @@ QPalette BaseStyle::darkModePalette()
 QPalette BaseStyle::standardPalette() const
 {
     return isDarkMode() ? darkModePalette() : lightModePalette();
-
-    // QColor backGround(251, 251, 251);
-    // QColor light = backGround.lighter(150);
-    // QColor mid(backGround.darker(130));
-    // QColor midLight = mid.lighter(110);
-    // QColor base = Qt::white;
-    // QColor disabledBase(backGround);
-    // QColor dark = backGround.darker(150);
-    // QColor darkDisabled = QColor(209, 209, 209).darker(110);
-    // QColor text = Qt::black;
-    // QColor hightlightedText = Qt::white;
-    // QColor disabledText = QColor(190, 190, 190);
-    // QColor button = QColor(242, 242, 242);
-    // QColor shadow = dark.darker(135);
-    // QColor disabledShadow = shadow.lighter(150);
-    // QColor placeholder = text;
-    // QColor highlightColor(84, 156, 255);
-    // placeholder.setAlpha(128);
-
-    // QPalette fusionPalette(Qt::black, backGround, light, dark, mid, text, base);
-    // fusionPalette.setBrush(QPalette::Midlight, midLight);
-    // fusionPalette.setBrush(QPalette::Button, button);
-    // fusionPalette.setBrush(QPalette::Shadow, shadow);
-    // fusionPalette.setBrush(QPalette::HighlightedText, hightlightedText);
-
-    // fusionPalette.setBrush(QPalette::Disabled, QPalette::Text, disabledText);
-    // fusionPalette.setBrush(QPalette::Disabled, QPalette::WindowText, disabledText);
-    // fusionPalette.setBrush(QPalette::Disabled, QPalette::ButtonText, disabledText);
-    // fusionPalette.setBrush(QPalette::Disabled, QPalette::Base, disabledBase);
-    // fusionPalette.setBrush(QPalette::Disabled, QPalette::Dark, darkDisabled);
-    // fusionPalette.setBrush(QPalette::Disabled, QPalette::Shadow, disabledShadow);
-
-    // fusionPalette.setBrush(QPalette::Highlight, highlightColor);
-    // fusionPalette.setBrush(QPalette::Active, QPalette::Highlight, highlightColor);
-    // fusionPalette.setBrush(QPalette::Inactive, QPalette::Highlight, highlightColor);
-    // fusionPalette.setBrush(QPalette::Disabled, QPalette::Highlight, QColor(145, 145, 145));
-
-    // fusionPalette.setBrush(QPalette::Base, base);
-    // fusionPalette.setBrush(QPalette::Window, base);
-
-    // fusionPalette.setBrush(QPalette::PlaceholderText, placeholder);
-
-    // return fusionPalette;
 }
 
 void BaseStyle::drawComplexControl(ComplexControl control,
@@ -4378,30 +4357,6 @@ void BaseStyle::drawComplexControl(ComplexControl control,
             
             painter->drawPolyline(arrow);
         }
-
-        // 绘制文本（如果不是可编辑的）
-        // if (!editable && !comboBox->currentText.isEmpty()) {
-        //     QRect textRect = editRect;
-        //     textRect.adjust(6, 0, -6, 0); // 添加水平内边距
-            
-        //     QString text = comboBox->currentText;
-        //     QFontMetrics fm(comboBox->fontMetrics);
-        //     text = fm.elidedText(text, Qt::ElideRight, textRect.width());
-
-        //     QColor textColor;
-        //     if (!enabled) {
-        //         textColor = isDarkMode() ? QColor("#808080") : QColor("#A0A0A0");
-        //     } else {
-        //         textColor = isDarkMode() ? Qt::white : Qt::black;
-        //     }
-
-        //     // 清除之前的文本渲染设置
-        //     painter->setCompositionMode(QPainter::CompositionMode_SourceOver);
-            
-        //     // 设置文本颜色和绘制文本
-        //     painter->setPen(textColor);
-        //     painter->drawText(textRect, Qt::AlignLeft | Qt::AlignVCenter, text);
-        // }
 
         painter->restore();
         break;

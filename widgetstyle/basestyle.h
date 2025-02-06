@@ -111,6 +111,7 @@ protected:
 private:
     ShadowHelper *m_shadowHelper;
     BlurHelper *m_blurHelper;
+    bool drawPushButtonLabelControl(const QStyleOption* option, QPainter* painter, const QWidget* widget) const;
 };
 
 #endif

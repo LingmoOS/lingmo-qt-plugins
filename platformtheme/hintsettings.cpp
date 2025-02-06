@@ -39,7 +39,7 @@ HintsSettings::HintsSettings(QObject *parent)
         m_hints[QPlatformTheme::SystemIconThemeName] = m_iconTheme;
 
     m_hints[QPlatformTheme::SystemIconFallbackThemeName] = s_lightIconName;
-    m_hints[QPlatformTheme::StyleNames] = "lingmo";
+    m_hints[QPlatformTheme::StyleNames] = "Ocean";
     m_hints[QPlatformTheme::SystemIconFallbackThemeName] = QStringLiteral("hicolor");
     m_hints[QPlatformTheme::IconThemeSearchPaths] = xdgIconThemePaths();
     m_hints[QPlatformTheme::UseFullScreenForPopupMenu] = false;
